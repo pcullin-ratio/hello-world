@@ -129,8 +129,12 @@ ifeq ($(APPNAME),)
 $(error ERROR: APPNAME is not set.)
 endif
 
+MAJOR ?= 0
+MINOR ?= 0
+REVISION ?= 0
+APP_VERSION = $(MAJOR).$(MINOR).$(REVISION)
 APP_ZIP_FILE := $(ZIPREL)/$(APPNAME).zip
-APP_PKG_FILE := $(PKGREL)/$(APPNAME)_$(DATE_TIME).pkg
+APP_PKG_FILE := $(PKGREL)/$(APPNAME)_$(APP_VERSION).pkg
 
 # these variables are only used for the .pkg file version tagging.
 APP_NAME := $(APPNAME)
@@ -173,8 +177,8 @@ endif
 # else use the reference libraries from the tools directory.
 BRIGHTSCRIPT_LIBS_DIR ?= $(APPS_ROOT_DIR)/tools/brightscript/Scripts/LibCore
 
-APP_KEY_PASS_TMP := /tmp/app_key_pass
-DEV_SERVER_TMP_FILE := /tmp/dev_server_out
+APP_KEY_PASS_TMP := $(APPS_ROOT_DIR)/tmp/app_key_pass
+DEV_SERVER_TMP_FILE := $(APPS_ROOT_DIR)/tmp/dev_server_out
 
 # The developer password that was set on the player is required for
 # plugin_install operations on modern versions of firmware.
@@ -610,7 +614,7 @@ endef
 # GET_PLUGIN_PAGE_PACKAGE_LINK is used to extract the installed package
 # URL from the dev server plugin_package web page response.
 # -------------------------------------------------------------------------
-define GET_PLUGIN_PAGE_PACKAGE_LINK =
+define GET_PLUGIN_PAGE_PACKAGE_LINK
 	cat $(DEV_SERVER_TMP_FILE) | \
 		grep -o "<a href=\"pkgs//[^\"]*\"" | \
 		sed "s|<a href=\"pkgs//||" | \
@@ -638,6 +642,15 @@ define GET_PLUGIN_PAGE_DEV_ID =
 endef
 
 # -------------------------------------------------------------------------
+# BUMP_MANIFEST_VERSION: sets the major, minor and build versions in the manifest.
+# -------------------------------------------------------------------------
+define BUMP_MANIFEST_VERSION
+    sed -i .bak -- "s/^\( *major_version=*\)[0-9][0-9]*/\1$(MAJOR)/" manifest
+    sed -i .bak -- "s/^\( *minor_version=*\)[0-9][0-9]*/\1$(MINOR)/" manifest
+    sed -i .bak -- "s/^\( *build_version=*\)[0-9][0-9]*/\1$(REVISION)/" manifest
+endef
+
+# -------------------------------------------------------------------------
 # install: install the app as the dev channel on the Roku target device.
 # -------------------------------------------------------------------------
 .PHONY: install
@@ -646,11 +659,12 @@ ifneq ($(APP_IS_THEME),)
 install: check-theme
 endif
 	@$(CHECK_ROKU_DEV_TARGET)
+	@$(BUMP_MANIFEST_VERSION)
 
 	@$(ECHO) "$(COLOR_START)Installing $(APPNAME)...$(COLOR_OFF)"
 	@rm -f $(DEV_SERVER_TMP_FILE)
 	@$(CHECK_ROKU_DEV_PASSWORD)
-	@HTTP_STATUS=`curl --user $(USERPASS) --digest --silent --show-error \
+	@HTTP_STATUS=`curl --user $(USERPASS) --digest -s -S --show-error \
 		-F "mysubmit=Install" -F "archive=@$(APP_ZIP_FILE)" \
 		--output $(DEV_SERVER_TMP_FILE) \
 		--write-out "%{http_code}" \
@@ -670,7 +684,7 @@ remove:
 	@$(ECHO) "$(COLOR_START)Removing dev app...$(COLOR_OFF)"
 	@rm -f $(DEV_SERVER_TMP_FILE)
 	@$(CHECK_ROKU_DEV_PASSWORD)
-	@HTTP_STATUS=`curl --user $(USERPASS) --digest --silent --show-error \
+	@HTTP_STATUS=`curl --user $(USERPASS) --digest -s -S --show-error \
 		-F "mysubmit=Delete" -F "archive=" \
 		--output $(DEV_SERVER_TMP_FILE) \
 		--write-out "%{http_code}" \
@@ -797,7 +811,7 @@ pkg: install
 	@$(CHECK_ROKU_DEV_PASSWORD)
 	@PASSWD=`cat $(APP_KEY_PASS_TMP)`; \
 	PKG_TIME=`expr \`date +%s\` \* 1000`; \
-	HTTP_STATUS=`curl --user $(USERPASS) --digest --silent --show-error \
+	HTTP_STATUS=`curl --user $(USERPASS) --digest --verbose --show-error \
 		-F "mysubmit=Package" -F "app_name=$(APP_NAME)/$(APP_VERSION)" \
 		-F "passwd=$$PASSWD" -F "pkg_time=$$PKG_TIME" \
 		--output $(DEV_SERVER_TMP_FILE) \
@@ -816,10 +830,10 @@ pkg: install
 
 	@$(CHECK_ROKU_DEV_PASSWORD)
 	@PKG_LINK=`$(GET_PLUGIN_PAGE_PACKAGE_LINK)`; \
-	HTTP_STATUS=`curl --user $(USERPASS) --digest --silent --show-error \
+	HTTP_STATUS=`curl --user $(USERPASS) --digest --verbose --show-error \
 		--output $(APP_PKG_FILE) \
 		--write-out "%{http_code}" \
-		http://$(ROKU_DEV_TARGET)/pkgs/$$PKG_LINK`; \
+		--url http://$(ROKU_DEV_TARGET)/pkgs/$$PKG_LINK`; \
 	$(CHECK_DEVICE_HTTP_STATUS)
 
 	@$(ECHO) "$(COLOR_DONE)**** Package $(APPNAME) complete ****$(COLOR_OFF)"
