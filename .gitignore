@@ -7,3 +7,7 @@ gen
 .DS_Store
 
 *.bak
+*.zip
+*.pkg
+!key.pkg
+!key*.pkg
